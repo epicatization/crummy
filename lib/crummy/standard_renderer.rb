@@ -7,6 +7,7 @@ module Crummy
     include ActionView::Helpers::TagHelper unless self.included_modules.include?(ActionView::Helpers::TagHelper)
     ActionView::Helpers::TagHelper::BOOLEAN_ATTRIBUTES.merge([:itemscope].to_set)
     attr_accessor :output_buffer
+
     # Render the list of crumbs as either html or xml
     #
     # Takes 3 options:
@@ -57,7 +58,7 @@ module Crummy
 
       case options[:format]
       when :html
-        crumb_string = crumbs.map do |crumb|
+        crumb_string = crumbs.map.with_index(1) do |crumb, index|
           next if local_global.call(crumb, options, :right_side)
           crumb_to_html(
             crumb,
@@ -67,11 +68,16 @@ module Crummy
             (crumb == crumbs.first),
             (crumb == crumbs.last),
             local_global.call(crumb, options, :microdata),
+            index,
             local_global.call(crumb, options, :last_crumb_linked),
             local_global.call(crumb, options, :truncate)
           )
           end.compact.join(options[:separator]).html_safe
-        crumb_string
+        if options[:microdata]
+          content_tag(:div, crumb_string, itemscope: true, itemtype: data_definition_url("BreadcrumbList"))
+        else
+          crumb_string
+        end
       when :html_list
         # Let's set values for special options of html_list format
         options[:li_class] ||= Crummy.configuration.li_class
@@ -131,23 +137,27 @@ module Crummy
 
     private
 
-    def crumb_to_html(crumb, links, first_class, last_class, is_first, is_last, with_microdata, last_crumb_linked, truncate)
+    def crumb_to_html(crumb, links, first_class, last_class, is_first, is_last, with_microdata, index, last_crumb_linked, truncate)
       html_classes = []
       html_classes << first_class if is_first
       html_classes << last_class if is_last
       name, url, options = crumb
+      name = truncate.present? ? name.truncate(truncate) : name
       options = {} unless options.is_a?(Hash)
       can_link = url && links && (!is_last || last_crumb_linked)
       link_html_options = options[:link_html_options] || {}
       link_html_options[:class] = html_classes
       if with_microdata
-        item_title = content_tag(:span, (truncate.present? ? name.truncate(truncate) : name), :itemprop => "title")
-        html_options = {:itemscope => true, :itemtype => data_definition_url("Breadcrumb")}
-        link_html_options[:itemprop] = "url"
-        html_content = can_link ? link_to(item_title, url, link_html_options) : item_title
-        content_tag(:div, html_content, html_options)
+        name_with_microdata = content_tag(:span, name, itemprop: 'name')
+        link_html_options[:itemtype] = data_definition_url("Thing")
+        link_html_options[:itemprop] = 'item'
+        link_html_options[:itemscope] = true
+        content_tag(:span, itemprop: "itemListElement", itemscope: true, itemtype: data_definition_url("ListItem")) do
+          concat can_link ? link_to(name_with_microdata, url, link_html_options) : name_with_microdata
+          concat content_tag(:meta, '', {content: index, itemprop: 'position'})
+        end
       else
-        can_link ? link_to((truncate.present? ? name.truncate(truncate) : name), url, link_html_options) : (truncate.present? ? name.truncate(truncate) : name)
+        can_link ? link_to( name, url, link_html_options) : name
       end
     end
 
@@ -181,7 +191,7 @@ module Crummy
     end
 
     def data_definition_url(type)
-      "http://data-vocabulary.org/#{type}"
+      "http://schema.org/#{type}"
     end
   end
 end
