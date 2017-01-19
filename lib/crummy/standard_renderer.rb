@@ -154,7 +154,7 @@ module Crummy
         link_html_options[:itemscope] = true
         content_tag(:span, itemprop: "itemListElement", itemscope: true, itemtype: data_definition_url("ListItem")) do
           concat can_link ? link_to(name_with_microdata, url, link_html_options) : name_with_microdata
-          concat content_tag(:meta, '', {content: index, itemprop: 'position'})
+          concat "<meta content='#{index}' itemprop='position'>".html_safe
         end
       else
         can_link ? link_to( name, url, link_html_options) : name
